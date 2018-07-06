@@ -6,7 +6,7 @@ import json
 import requests
 import re
 import time
-
+import sqlite3
 
 
 def request_comms(url, req_values):
@@ -51,17 +51,28 @@ def main():
     with open('req_values.txt', 'r', encoding='utf-8') as f:
         req_values = json.load(f)
 
-    members = {}
-    for _ in range(100):
-        comms = request_comms(url, req_values)
-        members = parse_comms(members, comms)
-        req_values["start_comment_id"] += 100
-        time.sleep(0.5)
+    con = sqlite3.connect(r'gig_members.db')
+    cur = con.cursor()
+    sql = '''INSERT INTO 'members' (name, counter)
+        VALUES (?, ?)
+        '''
+    values = ('TEST', 1)
+    cur.execute(sql, values)
 
-    # Вывод
-    for mem, count in members.items():
-        print(mem, count)
-    print('TOTAL:', len(members))
+##    members = {}
+##    for _ in range(100):
+##        comms = request_comms(url, req_values)
+##        members = parse_comms(members, comms)
+##        req_values["start_comment_id"] += 100
+##        time.sleep(0.5)
+
+    cur.close()
+    con.close()
+
+##    # Вывод
+##    for mem, count in members.items():
+##        print(mem, count)
+##    print('TOTAL:', len(members))
 
 
 
