@@ -15,12 +15,18 @@ def request_comms(url, req_values):
     comms = json.loads(res.text)
     return comms
 
-def parse_comms(members, comms):
+def parse_comms(comms, cur, con):
     '''Ищет комментарии со списком. Выделяет имена из списка,
     отделяет лишние данные, заносит в словарь.
     Если имя уже есть, увеличивает счетчик на 1'''
+
+    sql_select = '''SELECT name, counter FROM members'''
+    sql_insert = '''INSERT INTO 'members' (name, counter)
+        VALUES (?, ?)
+        '''
     if not comms['response']['items']: # Пустой ответ
-        return members
+        print('ENDED')
+        return 1 # Стоп
     for comm in comms['response']['items']:
             if comm['from_id'] == -10916742: # От сообщества
                 template1 = r'1\..*\n2\..*\n3\..*\n' # Список
@@ -37,11 +43,33 @@ def parse_comms(members, comms):
                                     name = words[0]+' '+words[1]
                             else:
                                 name = words[0]
-                            if name in members: # Дублирующиеся имена
-                                members[name] += 1
-                            else:
-                                members[name] = 1
-    return members
+                            values = (name, 1)
+
+                            try:
+                                cur.execute(sql_select)
+                            except sqlite3.DatabaseError as err:
+                                print('Error:', err)
+                            for row in cur.fetchall():
+                                stored_name, counter = row
+                                in_base = 0
+                                if name == stored_name:
+                                    cur.execute('''INSERT INTO 'members' (counter)
+                                    VALUES (?)''', counter + 1)
+                                    con.commit()
+                                    in_base = 1
+                                if not in_base:
+                                    try:
+                                        cur.execute(sql_insert, values)
+                                    except sqlite3.DatabaseError as err:
+                                        print('Error:', err)
+                                    else:
+                                        con.commit()
+
+##                            if name in members: # Дублирующиеся имена
+##                                members[name] += 1
+##                            else:
+##                                members[name] = 1
+
 
 def main():
     '''
@@ -51,20 +79,26 @@ def main():
     with open('req_values.txt', 'r', encoding='utf-8') as f:
         req_values = json.load(f)
 
+    # Подключение к БД
     con = sqlite3.connect(r'gig_members.db')
     cur = con.cursor()
-    sql = '''INSERT INTO 'members' (name, counter)
-        VALUES (?, ?)
-        '''
-    values = ('TEST', 1)
-    cur.execute(sql, values)
 
-##    members = {}
-##    for _ in range(100):
-##        comms = request_comms(url, req_values)
-##        members = parse_comms(members, comms)
-##        req_values["start_comment_id"] += 100
-##        time.sleep(0.5)
+##    values = ('TEST', 1)
+##    try:
+##        cur.execute(sql_insert, values)
+##    except sqlite3.DatabaseError as err:
+##        print('Error:', err)
+##    else:
+##        con.commit()
+
+    # Основной цикл
+    for _ in range(100):
+        comms = request_comms(url, req_values)
+        stop = parse_comms(comms, cur, con)
+        if stop:
+            break
+        req_values["start_comment_id"] += 100
+        time.sleep(0.5)
 
     cur.close()
     con.close()
