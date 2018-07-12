@@ -15,19 +15,17 @@ def request_comms(url, req_values):
     comms = json.loads(res.text)
     return comms
 
-def parse_comms(members, comms, start_comment_id):
+def parse_comms(comms, offset):
     '''Ищет комментарии со списком. Выделяет имена из списка,
     отделяет лишние данные, заносит в словарь.
     Если имя уже есть, увеличивает счетчик на 1.
     Если комментарии закончились, возвращает 1 для остановки осн. цикла'''
 
-##    print(int(comms['response']['items'][0]['id']), start_comment_id)
-##    input()
-
+    new_members = []
     # Если комментарии кончились (api дает один последний комментарий)
-    if int(comms['response']['items'][0]['id']) < start_comment_id:
-        print('ENDED')
-        return members, 1 # Стоп
+    if int(comms['response']['count']) <= offset:
+        print('ENDED', comms['response']['count'], offset)
+        return new_members, 1 # Стоп
     for comm in comms['response']['items']:
             if comm['from_id'] == -10916742: # От сообщества
                 template1 = r'1\..*\n2\..*\n3\..*\n' # Список
@@ -44,46 +42,29 @@ def parse_comms(members, comms, start_comment_id):
                                     name = words[0]+' '+words[1]
                             else:
                                 name = words[0]
+                            new_members.append(name)
 
-                            if name in members: # Дублирующиеся имена
-                                members[name] += 1
-                            else:
-                                members[name] = 1
-    return members, 0
+    return new_members, 0
 
-def db_insert(con, cur, members):
+def db_insert(con, cur, new_members):
     '''Записывает полученные имена в БД.
     Если имя уже есть, увеличивает счетчик на 1'''
-    pass
-##    sql_select = '''SELECT name, counter FROM members'''
-##    sql_insert = '''INSERT INTO 'members' (name, counter)
-##        VALUES (?, ?)
-##        '''
-##    values = (name, 1)
-##    try:
-##        cur.execute(sql_select)
-##    except sqlite3.DatabaseError as err:
-##        print('Error:', err)
-##    for row in cur.fetchall():
-##        stored_name, counter = row
-##        in_base = 0
-##        if name == stored_name:
-##            cur.execute('''UPDATE 'members' SET
-##            counter=:counter WHERE name=:name''',
-##            {'counter':2, 'name':stored_name})
-##            con.commit()
-##            in_base = 1
-##        if not in_base:
-##            try:
-##                cur.execute(sql_insert, values)
-##            except sqlite3.DatabaseError as err:
-##                print('Error:', err)
-##            else:
-##                con.commit()
+
+    sql_insert = '''INSERT INTO 'members'(name, counter)
+    VALUES (?,?)'''
+    sql_update = '''UPDATE members SET counter=:counter WHERE name=:name'''
+
+    for name in new_members:
+        cur.execute('''SELECT name, counter FROM members WHERE name=:name''', {'name': name})
+        row = cur.fetchone()
+        if row: # Имя есть в БД
+            stored_name, counter = row
+            cur.execute(sql_update, {'counter':counter + 1, 'name': stored_name})
+        else:
+            cur.execute(sql_insert, (name, 1))
+        con.commit()
 
 def main():
-    '''
-    '''
     url = 'https://api.vk.com/method/board.getComments?'
     # Данные запроса из файла
     with open('req_values.txt', 'r', encoding='utf-8') as f:
@@ -93,35 +74,31 @@ def main():
     con = sqlite3.connect(r'gig_members.db')
     cur = con.cursor()
 
+    # Очистка таблицы
+    cur.execute('''DELETE FROM members''')
+    con.commit()
+
     # Основной цикл
-    members = {}
-    for _ in range(10):
+    for _ in range(10000):
+        # Запрос порции комментариев (max=100)
         comms = request_comms(url, req_values)
-        members, stop = parse_comms(members, comms, req_values["start_comment_id"])
-        db_insert(con, cur, members)
-        if stop:
+        # Парсинг комментариев, выделение имен
+        new_members, stop = parse_comms(comms, req_values["offset"])
+        # Запись имён в БД с количеством посещений
+        db_insert(con, cur, new_members)
+        if stop: # Комментарии в теме кончились
             break
-        req_values["start_comment_id"] += 100
+        req_values["offset"] += 100
         time.sleep(0.5)
 
-##    # Основной цикл
-##    for _ in range(100):
-##        comms = request_comms(url, req_values)
-##        stop = parse_comms(comms, cur, con)
-##        if stop:
-##            break
-##        req_values["start_comment_id"] += 100
-##        time.sleep(0.5)
+    # Вывод
+    cur.execute('''SELECT name, counter FROM members''')
+    for row in cur.fetchall():
+        name, counter = row
+        print(name, counter)
 
     cur.close()
     con.close()
-
-    # Вывод
-    for mem, count in members.items():
-        print(mem, count)
-    print('TOTAL:', len(members))
-
-
 
 if __name__=='__main__':
     main()

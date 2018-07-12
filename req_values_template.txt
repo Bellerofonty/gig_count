@@ -1,1 +1,1 @@
-{"v": 5.52, "group_id": 100000, "topic_id": 100000, "count": 100, "start_comment_id": 10000, "access_token": "100000"}
+{"v": 5.52, "group_id": 100000, "topic_id": 100000, "count": 100, "offset": 10000, "access_token": "100000"}
