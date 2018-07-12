@@ -24,7 +24,7 @@ def parse_comms(comms, offset):
     new_members = []
     # Если комментарии кончились (api дает один последний комментарий)
     if int(comms['response']['count']) <= offset:
-        print('ENDED', comms['response']['count'], offset)
+        print('ENDED')
         return new_members, 1 # Стоп
     for comm in comms['response']['items']:
             if comm['from_id'] == -10916742: # От сообщества
